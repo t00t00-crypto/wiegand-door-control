@@ -1,0 +1,46 @@
+name: 编译
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  release:
+    types:
+        - created
+
+jobs:
+  generate:
+    name: 编译
+    runs-on: ubuntu-latest
+    steps:
+      - name: 初始化环境
+        uses: actions/checkout@v2
+      - name: 编译
+        run: |
+          cd ~/work/wiegand-door-control/wiegand-door-control
+          go get github.com/chilts/sid
+          mkdir dist
+          GOOS=linux GOARCH=amd64 go build -o ./dist/linux -ldflags "-s -w" main.go
+          GOOS=darwin GOARCH=amd64 go build -o ./dist/mac -ldflags "-s -w" main.go
+          GOOS=windows GOARCH=amd64 go build -o ./dist/win64.exe -ldflags "-s -w" main.go
+          GOOS=windows GOARCH=386 go build -o ./dist/win32.exe -ldflags "-s -w" main.go
+      - name: 压缩
+        uses: gacts/upx@master
+        with:
+            dir: './dist'
+            upx_args: '-9'
+      - name: 打包
+        run: |
+          tar -zcvf dist.tar.gz ./dist
+      - name: 上传至奶牛快传
+        run: |
+          curl -fsSL git.io/file-transfer | sh
+          ./transfer cow --block 2621440 -s -p 64 --no-progress dist.tar.gz 2>&1 | tee cowtransfer.log
+          echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
+          echo "::set-env name=COWTRANSFER_URL::$(cat cowtransfer.log | grep https | cut -f3 -d" ")"
+      - name: 上传
+        uses: actions/upload-artifact@v2
+        with:
+            name: dist.tar.gz
+            path: dist.tar.gz
